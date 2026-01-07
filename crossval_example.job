@@ -1,0 +1,6 @@
+#!/bin/sh
+#SBATCH -N 1     # nodes requested
+#SBATCH -c 1      # cores requested
+#SBATCH -t 02:30:00  # time requested in hour:minute:second
+#SBATCH --partition=normal --exclusive
+/scratch/mch/wolfensb/rainforest_venv/bin/python -u /users/wolfensb/mdrs_projects/rainforest_mark2/rainforest/crossval_example.py
