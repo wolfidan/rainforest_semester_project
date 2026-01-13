@@ -5,7 +5,6 @@ required to unpickle trained RandomForest models
 Daniel Wolfensberger
 MeteoSwiss/EPFL
 daniel.wolfensberger@epfl.ch
-December 2019
 """
 
 # Global imports
