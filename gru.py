@@ -1,4 +1,3 @@
-
 import pandas as pd
 import numpy as np
 import torch
@@ -10,10 +9,12 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence
 from numba import njit
 
 import logging
+
 logging.basicConfig(level=logging.INFO)
 
 # Select device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 @njit
 def _find_group_indices(groups):
@@ -39,6 +40,7 @@ def _find_group_indices(groups):
     """
     indices = np.searchsorted(groups, np.arange(groups[-1]))
     return indices[:-1], np.append(indices[1:], len(groups))
+
 
 @njit
 def _process_groups_fast(features, start_idx, end_idx, padded_sequences):
@@ -69,8 +71,9 @@ def _process_groups_fast(features, start_idx, end_idx, padded_sequences):
         group = features[start:end]  # Extract group (already sorted)
         seq_len = group.shape[0]  # Sequence length
         padded_sequences[i, :seq_len, :] = group  # Copy with padding
-        
+
     return padded_sequences
+
 
 class RainDataset(Dataset):
     """
@@ -89,11 +92,12 @@ class RainDataset(Dataset):
         Sample weights used for weighted sampling. If None, all
         samples receive unit weight.
     """
-    def __init__(self, sequences, targets, weights = None):
+
+    def __init__(self, sequences, targets, weights=None):
         self.sequences = sequences
-        self.targets =  torch.tensor(targets, dtype=torch.float32)
+        self.targets = torch.tensor(targets, dtype=torch.float32)
         if weights is not None:
-            self.weights =  torch.tensor(weights, dtype=torch.float32) 
+            self.weights = torch.tensor(weights, dtype=torch.float32)
         else:
             self.weights = torch.from_numpy(np.ones((len(self.targets))))
         self.lengths = [len(seq) for seq in sequences]  # Compute lengths
@@ -127,7 +131,13 @@ class RainDataset(Dataset):
         weight : torch.Tensor
             Sample weight.
         """
-        return self.padded_sequences[idx].float(), self.lengths[idx], self.targets[idx], self.weights[idx]
+        return (
+            self.padded_sequences[idx].float(),
+            self.lengths[idx],
+            self.targets[idx],
+            self.weights[idx],
+        )
+
 
 # --- Define GRU Model ---
 class GRUmodel(nn.Module):
@@ -148,9 +158,12 @@ class GRUmodel(nn.Module):
     dropout : float, default=0
         Dropout probability between GRU layers.
     """
-    def __init__(self, input_dim, hidden_dim=64, num_layers=1, dropout = 0):
+
+    def __init__(self, input_dim, hidden_dim=64, num_layers=1, dropout=0):
         super(GRUmodel, self).__init__()
-        self.GRU = nn.GRU(input_dim, hidden_dim, num_layers, batch_first=True, dropout = dropout)
+        self.GRU = nn.GRU(
+            input_dim, hidden_dim, num_layers, batch_first=True, dropout=dropout
+        )
         self.fc = nn.Linear(hidden_dim, 1)  # Output single precipitation value
 
     def forward(self, x, lengths):
@@ -170,10 +183,13 @@ class GRUmodel(nn.Module):
             Predicted precipitation values of shape (batch_size,).
         """
         # Pack the padded sequences (ignores padding during GRU processing)
-        x_packed = pack_padded_sequence(x, lengths, batch_first=True, enforce_sorted=False)
+        x_packed = pack_padded_sequence(
+            x, lengths, batch_first=True, enforce_sorted=False
+        )
         _, hidden = self.GRU(x_packed)  # GRU processes only valid timesteps
         out = self.fc(hidden[-1])  # Use last hidden state of last layer
         return out.squeeze()
+
 
 class GRU(object):
     """
@@ -197,12 +213,22 @@ class GRU(object):
     loss_function : {"mse", "mae", "huber"}, default="mse"
         Loss function used for training.
     """
-    def __init__(self, input_dim=18, num_hidden_layers=2, num_hidden_nodes=64, 
-                 dropout=0.1, learning_rate=0.001, loss_function="mse"):
-        
+
+    def __init__(
+        self,
+        input_dim=18,
+        num_hidden_layers=2,
+        num_hidden_nodes=64,
+        dropout=0.1,
+        learning_rate=0.001,
+        loss_function="mse",
+    ):
+
         # build model on device
-        self.model = GRUmodel(input_dim, num_hidden_nodes, num_hidden_layers, dropout).to(device)
-        
+        self.model = GRUmodel(
+            input_dim, num_hidden_nodes, num_hidden_layers, dropout
+        ).to(device)
+
         # loss
         if loss_function.upper() == "MSE":
             self.criterion = nn.MSELoss()
@@ -212,13 +238,21 @@ class GRU(object):
             self.criterion = nn.HuberLoss()
         else:
             raise ValueError(f"Unknown loss function {loss_function}")
-        
+
         # optimizer
         self.optimizer = optim.Adam(self.model.parameters(), lr=learning_rate)
 
-        
-    def fit(self, features, targets, groups, weights = None, batch_size = 512,
-              max_epochs = 100, patience = 10, frac_valid = 0.1):
+    def fit(
+        self,
+        features,
+        targets,
+        groups,
+        weights=None,
+        batch_size=512,
+        max_epochs=100,
+        patience=10,
+        frac_valid=0.1,
+    ):
         """
         Train the GRU model with early stopping.
 
@@ -257,28 +291,30 @@ class GRU(object):
             if len(weights) != len(targets):
                 logging.error("Length of weights and targets must match!")
                 sys.exit()
-            
+
         # get sequences
         train_sequences = self.create_sequences(features, groups)
         nsamples = len(train_sequences)
         # Define train-validation split
-        train_size = int((1-frac_valid) * nsamples) 
-        val_size = nsamples - train_size  
+        train_size = int((1 - frac_valid) * nsamples)
+        val_size = nsamples - train_size
 
         dataset = RainDataset(train_sequences, targets, weights)
         # Split dataset
         train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
-        
+
         weights_train = [w[3] for w in train_dataset]
         weights_valid = [w[3] for w in val_dataset]
         train_sampler = WeightedRandomSampler(weights_train, len(weights_train))
         valid_sampler = WeightedRandomSampler(weights_valid, len(weights_valid))
-        
-        train_loader = DataLoader(train_dataset, batch_size=batch_size,
-                                  sampler = train_sampler)
-        valid_loader = DataLoader(val_dataset, batch_size=batch_size,
-                                  sampler = valid_sampler)
-        
+
+        train_loader = DataLoader(
+            train_dataset, batch_size=batch_size, sampler=train_sampler
+        )
+        valid_loader = DataLoader(
+            val_dataset, batch_size=batch_size, sampler=valid_sampler
+        )
+
         best_val_loss = np.inf  # Track best validation loss
         for epoch in range(max_epochs):
             print(f"Running Epoch {epoch+1}")
@@ -286,8 +322,12 @@ class GRU(object):
             train_loss = 0
             i = 0
             for X_batch, lengths_batch, y_batch, _ in train_loader:
-                i+=1
-                X_batch, lengths_batch, y_batch = X_batch.to(device), lengths_batch.cpu(), y_batch.to(device)
+                i += 1
+                X_batch, lengths_batch, y_batch = (
+                    X_batch.to(device),
+                    lengths_batch.cpu(),
+                    y_batch.to(device),
+                )
                 self.optimizer.zero_grad()
                 outputs = self.model(X_batch, lengths_batch)
                 loss = self.criterion(outputs, y_batch)
@@ -302,13 +342,19 @@ class GRU(object):
             val_loss = 0
             with torch.no_grad():
                 for X_batch, lengths_batch, y_batch, _ in valid_loader:
-                    X_batch, lengths_batch, y_batch = X_batch.to(device), lengths_batch.cpu(), y_batch.to(device)
+                    X_batch, lengths_batch, y_batch = (
+                        X_batch.to(device),
+                        lengths_batch.cpu(),
+                        y_batch.to(device),
+                    )
                     outputs = self.model(X_batch, lengths_batch)
                     loss = self.criterion(outputs, y_batch)
                     val_loss += loss.item()
 
             val_loss /= len(valid_loader)  # Average validation loss
-            print(f"Epoch {epoch+1}: Train Loss = {train_loss:.4f}, Val Loss = {val_loss:.4f}")
+            print(
+                f"Epoch {epoch+1}: Train Loss = {train_loss:.4f}, Val Loss = {val_loss:.4f}"
+            )
 
             # --- Early Stopping Check ---
             if val_loss < best_val_loss:
@@ -320,8 +366,8 @@ class GRU(object):
             if epochs_no_improve >= patience:
                 print(f"Early stopping triggered after {epoch+1} epochs!")
                 break
-            
-    def predict(self, features, groups, batch_size = 512):
+
+    def predict(self, features, groups, batch_size=512):
         """
         Generate predictions for new data.
 
@@ -348,11 +394,15 @@ class GRU(object):
 
         with torch.no_grad():
             for X_batch, lengths_batch, y_batch, _ in dataloader:
-                X_batch, lengths_batch, y_batch = X_batch.to(device), lengths_batch.cpu(), y_batch.to(device)
+                X_batch, lengths_batch, y_batch = (
+                    X_batch.to(device),
+                    lengths_batch.cpu(),
+                    y_batch.to(device),
+                )
                 y_pred = self.model(X_batch, lengths_batch)  # Forward pass
                 all_predictions.append(y_pred)
         return torch.cat(all_predictions, dim=0).cpu().numpy()
-            
+
     def create_sequences(self, features, groups):
         # Reindex groups safely
         _, groups = np.unique(groups, return_inverse=True)
@@ -373,15 +423,11 @@ class GRU(object):
             )
 
         padded_sequences = np.zeros(
-            (num_samples, max_seq_len, num_features),
-            dtype=np.float32
+            (num_samples, max_seq_len, num_features), dtype=np.float32
         )
 
         padded_sequences = _process_groups_fast(
-            np.asarray(features),
-            start_idx,
-            end_idx,
-            padded_sequences
+            np.asarray(features), start_idx, end_idx, padded_sequences
         )
 
         return torch.tensor(padded_sequences, dtype=torch.float32)
