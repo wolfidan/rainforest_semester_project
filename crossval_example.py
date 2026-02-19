@@ -139,7 +139,7 @@ def _make_pred_df(
       - y_true is indexed by vertgroup_id (group-level target)
       - y_pred is aligned with vertgroup_ids (same order)
     """
-    y_true_aligned = y_true.loc[vertgroup_ids].to_numpy()
+    y_true_aligned = y_true.loc[sorted(vertgroup_ids)].to_numpy()
 
     return pd.DataFrame(
         {
@@ -207,7 +207,7 @@ features_gru = prepare_for_gru(features)
 PRED_DIR = os.path.join(OUTPUT_DIR, "cv_predictions")
 os.makedirs(PRED_DIR, exist_ok=True)
 
-# # %%
+# %%
 # ##########################################################
 # # GRU Cross-validation + save preds (train & test)
 # ##########################################################
@@ -267,7 +267,7 @@ for fold, (vertgroups_train, vertgroups_test) in enumerate(kf, start=1):
     mse = mean_squared_error(y_test, y_pred_test)
     gru_test_errors.append(mse)
     print(f"Fold {fold} MSE: {mse:.4f}")
-# %%
+
 print(f"GRU CV mean MSE: {np.mean(gru_test_errors):.4f}")
 
 # Save all GRU CV preds
@@ -302,7 +302,7 @@ for fold, (vertgroups_train, vertgroups_test) in enumerate(kf, start=1):
     train_mask = np.isin(vertgroups, vertgroups_train)
     test_mask = np.isin(vertgroups, vertgroups_test)
 
-    X_train, X_test = features.iloc[train_mask], features.iloc[test_mask]
+    X_train, X_test = features.loc[train_mask], features.loc[test_mask]
     # See remark at the end of random_group_subset to understand why we need sorted
     y_train, y_test = (
         targets.loc[sorted(vertgroups_train)],
