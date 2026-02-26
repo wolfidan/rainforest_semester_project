@@ -4,12 +4,11 @@ pandas >= 1.4
 scipy >= 1.8
 
 # Machine learning
-scikit - learn >= 1.1
+scikit-learn >= 1.1
 joblib >= 1.2
 numba >= 0.56
 
 # Deep learning
-torch >= 1.12
+pytorch >= 1.12
 
 # Utilities
-pickle - mixin >= 1.0
