@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import os
+from helper.analyse_training_metrics import analyze_training_stats
 
 
 class Logger():
@@ -82,8 +83,6 @@ class Logger():
     def write_to_file(
             self,
             outdir: str,
-            model_name: str,
-            filename_prefix: str,
         ) -> None:
         """
         Save:
@@ -103,22 +102,29 @@ class Logger():
                 fold = 0
             split = str(df["split"].iloc[0])
             fpath = os.path.join(
-                outdir, f"{filename_prefix}_{model_name}_fold{fold:02d}_{split}.parquet"
+                outdir, f"{self.filename_prefix}_{self.model_name}_fold{fold:02d}_{split}.parquet"
             )
             df.to_parquet(fpath, index=False)
 
         # Save combined
         combined = pd.concat(self.eval_preds_per_fold, ignore_index=True)
         combined_path = os.path.join(
-            outdir, f"{filename_prefix}_{model_name}_all_folds.parquet"
+            outdir, f"{self.filename_prefix}_{self.model_name}_all_folds.parquet"
         )
         combined.to_parquet(combined_path, index=False)
 
         # save training metrics
         combined_train_df = pd.concat(self.training_stats, ignore_index=True)
         combined_path_train = os.path.join(
-            outdir, f"{filename_prefix}_{model_name}_training_stats.parquet"
+            outdir, f"{self.filename_prefix}_{self.model_name}_training_stats.parquet"
         )
         combined_train_df.to_parquet(combined_path_train, index=False)
 
         print(f"Training and evaluation statistics successfully saved to: {outdir}")
+
+    def generate_training_metrics(self, output_dir):
+        combined_path_train = os.path.join(
+            self.outdir, f"{self.filename_prefix}_{self.model_name}_training_stats.parquet"
+        )
+        results = analyze_training_stats(combined_path_train, output_dir=output_dir)
+        print("Summary Statistics:", results) 

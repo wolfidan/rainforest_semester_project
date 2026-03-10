@@ -80,9 +80,11 @@ class GRURainSeqDataset(Dataset):
 
         # --- Load data ------------------------------------------------------------------
 
-        radar = pd.read_parquet(os.path.join(input_dir, "radar_x0y0.parquet"))
-        gauge = pd.read_parquet(os.path.join(input_dir, "gauge.parquet"))
+        radar = pd.read_parquet(os.path.join(input_dir, "radar_x0y0.parquet"), columns=cols_to_use)
+        gauge = pd.read_parquet(os.path.join(input_dir, "gauge.parquet"), columns=["RRE150Z0"])
         groups = pickle.load(open(os.path.join(input_dir, "grouping_idx_x0y0.p"), "rb"))
+
+        print("loading parquet files successful")
 
         features = radar[cols_to_use]
         vertgroups = groups["grp_vertical"]
@@ -93,6 +95,7 @@ class GRURainSeqDataset(Dataset):
         features = features.loc[subset_mask]
         vertgroups = vertgroups[subset_mask]
         targets = targets.loc[selected_groups]
+        print("Subsetting dataset successful")
 
         # Prepare features for GRU
         features_gru = self.prepare_for_gru(features)
@@ -117,6 +120,8 @@ class GRURainSeqDataset(Dataset):
 
         # Pad sequences to the maximum length
         self.padded_sequences = pad_sequence(sequences, batch_first=True)
+
+        print("preparing features successful")
 
     def prepare_for_gru(self, radar_db):
         # one hot encoding

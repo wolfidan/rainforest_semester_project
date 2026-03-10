@@ -8,6 +8,7 @@ from torch.utils.data import Dataset, DataLoader, random_split, WeightedRandomSa
 from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence
 from numba import njit
 from helper.Logger import Logger
+from tqdm import tqdm
 
 import logging
 
@@ -176,12 +177,15 @@ class GRU(object):
 
         best_val_loss = np.inf  # Track best validation loss
         epochs_no_improve = 0
+
         for epoch in range(max_epochs):
             print(f"Running Epoch {epoch+1}")
             self.model.train()
             train_loss = 0
             i = 0
-            for X_batch, lengths_batch, y_batch, _, _ in train_loader:
+
+            loop_train = tqdm(enumerate(train_loader), total=len(train_loader), leave=False)
+            for batch_idx, (X_batch, lengths_batch, y_batch, _, _) in loop_train:
                 i += 1
                 X_batch, lengths_batch, y_batch = (
                     X_batch.to(device),
@@ -195,6 +199,8 @@ class GRU(object):
                 self.optimizer.step()
                 train_loss += loss.item()
 
+                loop_train.set_description(f'Epoch [{epoch}/{max_epochs}] train step')
+
             train_loss /= len(train_loader)  # Average loss
 
             if self.logger:
@@ -205,7 +211,9 @@ class GRU(object):
             self.model.eval()
             val_loss = 0
             with torch.no_grad():
-                for X_batch, lengths_batch, y_batch, _, _ in valid_loader:
+                loop_val = tqdm(enumerate(valid_loader), total=len(valid_loader), leave=False)
+
+                for batch_idx, (X_batch, lengths_batch, y_batch, _, _) in loop_val:
                     X_batch, lengths_batch, y_batch = (
                         X_batch.to(device),
                         lengths_batch.cpu(),
@@ -215,6 +223,7 @@ class GRU(object):
                     loss = self.criterion(outputs, y_batch)
                     val_loss += loss.item()
 
+                    loop_val.set_description(f'Epoch [{epoch}/{max_epochs}] val step')
             val_loss /= len(valid_loader)  # Average validation loss
 
             if self.logger:
@@ -227,6 +236,7 @@ class GRU(object):
             
 
             # --- Early Stopping Check ---
+            print(f'Current val loss: {val_loss}, best val loss: {best_val_loss}')
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 epochs_no_improve = 0
@@ -262,7 +272,9 @@ class GRU(object):
         all_predictions = []
 
         with torch.no_grad():
-            for X_batch, lengths_batch, y_batch, _, idxs in dataloader:
+            loop = tqdm(enumerate(dataloader), total=len(dataloader), leave=False)
+
+            for batch_idx, (X_batch, lengths_batch, y_batch, _, idxs) in loop:
                 X_batch, lengths_batch, y_batch = (
                     X_batch.to(device),
                     lengths_batch.cpu(),
@@ -276,6 +288,7 @@ class GRU(object):
                                           y_true=np.asarray(y_batch.cpu()),
                                           y_pred=np.asarray(y_pred.cpu())
                                           )
+                loop.set_description("Test/Predict step")
 
         return torch.cat(all_predictions, dim=0).cpu().numpy()
 

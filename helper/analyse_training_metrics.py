@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 
-def analyze_training_results(stats_path):
+def analyze_training_stats(stats_path, output_dir):
     """
     Reads the training statistics parquet file, plots loss curves, 
     and returns summary metrics.
@@ -36,7 +36,9 @@ def analyze_training_results(stats_path):
     plt.ylabel("Mean Squared Error (MSE)")
     plt.yscale("log")  # Often helpful for loss curves
     plt.legend(title="Split")
-    plt.show()
+
+    fpath = os.path.join(output_dir, "train_val_stats.png")
+    plt.savefig(fpath, dpi=200)
 
     # 4. Calculate Interesting Values
     summary = {}
