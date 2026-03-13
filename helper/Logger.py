@@ -78,7 +78,7 @@ class Logger():
         self.training_stats.append(pd.DataFrame(
             data
         ))
-        print(f'Finished epoch {epoch}, writing stats to file successful.')
+        print(f'Finished epoch {epoch}, split {split}, writing stats to file successful.')
 
     def write_to_file(
             self,
@@ -126,5 +126,7 @@ class Logger():
         combined_path_train = os.path.join(
             self.outdir, f"{self.filename_prefix}_{self.model_name}_training_stats.parquet"
         )
-        results = analyze_training_stats(combined_path_train, output_dir=output_dir)
-        print("Summary Statistics:", results) 
+        results = analyze_training_stats(combined_path_train, output_dir=output_dir, metric="mse")
+        print("Summary Statistics for MSE:", results) 
+        results = analyze_training_stats(combined_path_train, output_dir=output_dir, metric="mse_weighted")
+        print("Summary Statistics for Weighted MSE:", results) 

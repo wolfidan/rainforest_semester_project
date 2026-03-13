@@ -2,7 +2,8 @@
 #SBATCH -N 1     # nodes requested
 #SBATCH -c 2      # cores requested
 #SBATCH --job-name=gru_train
-#SBATCH -t 4:00:00  # time requested in hour:minute:second
+#SBATCH --gres=gpu:1
+#SBATCH -t 04:00:00  # time requested in hour:minute:second
 #SBATCH --partition=normal --exclusive
 #SBATCH --output=/scratch/mch/tkluser/rainforest_semester_project/slurm_logs/output_%j.log   # Standard output
 #SBATCH --error=/scratch/mch/tkluser/rainforest_semester_project/slurm_logs/error_%j.log    # Error log (optional)
@@ -10,12 +11,13 @@
 # --- START TIME ---
 echo "Job started at: $(date +"%Y-%m-%d %H:%M:%S")"
 
+
 source /users/tkluser/miniforge3/etc/profile.d/conda.sh
 conda activate qpe_stable 
 
 echo 'slurm: train_gru_kfold'
 
-stat /scratch/mch/tkluser/rainforest_semester_project/train_gru_kfold.py
+# stat /scratch/mch/tkluser/rainforest_semester_project/train_gru_kfold.py
 
 python /scratch/mch/tkluser/rainforest_semester_project/train_gru_kfold.py
 

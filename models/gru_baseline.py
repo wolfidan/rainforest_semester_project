@@ -113,11 +113,11 @@ class GRU(object):
 
         # loss
         if loss_function.upper() == "MSE":
-            self.criterion = nn.MSELoss()
+            self.criterion = nn.MSELoss(reduction='none')
         elif loss_function.upper() == "MAE":
-            self.criterion = nn.L1Loss()
+            self.criterion = nn.L1Loss(reduction='none')
         elif loss_function.upper() == "HUBER":
-            self.criterion = nn.HuberLoss()
+            self.criterion = nn.HuberLoss(reduction='none')
         else:
             raise ValueError(f"Unknown loss function {loss_function}")
 
@@ -130,11 +130,12 @@ class GRU(object):
     def fit(
         self,
         dataset: Dataset, # dataset for training
-        weights=None,
         batch_size=512,
         max_epochs=100,
         patience=10,
-        frac_valid=0.1
+        frac_valid=0.1,
+        num_workers = 4,
+        save_best_epoch = False
     ):
         """
         Train the GRU model with early stopping.
@@ -169,10 +170,20 @@ class GRU(object):
         # valid_sampler = WeightedRandomSampler(weights_valid, len(weights_valid))
 
         train_loader = DataLoader(
-            train_dataset, batch_size=batch_size, shuffle=True, #sampler=train_sampler
+            train_dataset, batch_size=batch_size,
+            shuffle=True,
+            num_workers=num_workers,    # Matches SBATCH -c 2 request
+            pin_memory=True, # makes loading to GPU faster
+            #sampler=train_sampler
         )
+
         valid_loader = DataLoader(
-            val_dataset, batch_size=batch_size, #sampler=valid_sampler
+            val_dataset,
+            batch_size=batch_size, 
+            shuffle=False,
+            num_workers=num_workers,    # Matches SBATCH -c 2 request
+            pin_memory=True, # makes loading to GPU faster
+            #sampler=train_sampler
         )
 
         best_val_loss = np.inf  # Track best validation loss
@@ -181,59 +192,87 @@ class GRU(object):
         for epoch in range(max_epochs):
             print(f"Running Epoch {epoch+1}")
             self.model.train()
-            train_loss = 0
+            train_loss_unweighted = 0
+            train_loss_weighted = 0
             i = 0
 
             loop_train = tqdm(enumerate(train_loader), total=len(train_loader), leave=False)
-            for batch_idx, (X_batch, lengths_batch, y_batch, _, _) in loop_train:
+            for batch_idx, (X_batch, lengths_batch, y_batch, y_weights, _) in loop_train:
                 i += 1
-                X_batch, lengths_batch, y_batch = (
-                    X_batch.to(device),
+                X_batch, lengths_batch, y_batch, y_weights = (
+                    X_batch.to(device, non_blocking=True),
                     lengths_batch.cpu(),
-                    y_batch.to(device),
+                    y_batch.to(device, non_blocking=True),
+                    y_weights.to(device, non_blocking=True)
                 )
+
                 self.optimizer.zero_grad()
-                outputs = self.model(X_batch, lengths_batch)
-                loss = self.criterion(outputs, y_batch)
-                loss.backward()
+
+                with torch.autocast(device_type="cuda"):
+                    outputs = self.model(X_batch, lengths_batch)
+                    raw_loss = self.criterion(outputs, y_batch)
+
+                    # weighted loss
+                    weighted_loss = (raw_loss * y_weights).mean()
+                    #non weighted loss
+                    unweighted_loss = raw_loss.mean()
+                
+                weighted_loss.backward()
                 self.optimizer.step()
-                train_loss += loss.item()
+
+                train_loss_unweighted += unweighted_loss.item() 
+                train_loss_weighted += weighted_loss.item() 
 
                 loop_train.set_description(f'Epoch [{epoch}/{max_epochs}] train step')
 
-            train_loss /= len(train_loader)  # Average loss
+            train_loss_weighted /= len(train_loader)  # Average loss
+            train_loss_unweighted /= len(train_loader)  # Average loss
 
             if self.logger:
-                self.logger.log_training_epoch(split="train", epoch=epoch, mse = train_loss) 
+                self.logger.log_training_epoch(split="train", epoch=epoch, mse = train_loss_unweighted, mse_weighted = train_loss_weighted) 
 
 
             # --- Validation Step ---
             self.model.eval()
-            val_loss = 0
+            val_loss_unweighted = 0
+            val_loss_weighted = 0
             with torch.no_grad():
                 loop_val = tqdm(enumerate(valid_loader), total=len(valid_loader), leave=False)
 
-                for batch_idx, (X_batch, lengths_batch, y_batch, _, _) in loop_val:
-                    X_batch, lengths_batch, y_batch = (
-                        X_batch.to(device),
+                for batch_idx, (X_batch, lengths_batch, y_batch, y_weights, _) in loop_val:
+                    X_batch, lengths_batch, y_batch, y_weights = (
+                        X_batch.to(device, non_blocking=True),
                         lengths_batch.cpu(),
-                        y_batch.to(device),
+                        y_batch.to(device, non_blocking=True),
+                        y_weights.to(device, non_blocking=True)
                     )
-                    outputs = self.model(X_batch, lengths_batch)
-                    loss = self.criterion(outputs, y_batch)
-                    val_loss += loss.item()
+                    with torch.autocast(device_type="cuda"):
+                        outputs = self.model(X_batch, lengths_batch)
+                        raw_loss = self.criterion(outputs, y_batch)
+
+                        # weighted loss
+                        weighted_loss = (raw_loss * y_weights).mean()
+
+                        #non weighted loss
+                        unweighted_loss = raw_loss.mean()
+                    
+                    val_loss_unweighted += unweighted_loss.item() 
+                    val_loss_weighted += weighted_loss.item() 
 
                     loop_val.set_description(f'Epoch [{epoch}/{max_epochs}] val step')
-            val_loss /= len(valid_loader)  # Average validation loss
+
+            val_loss_unweighted /= len(valid_loader)  # Average validation loss
+            val_loss_weighted /= len(valid_loader)  
 
             if self.logger:
-                self.logger.log_training_epoch(split="val", epoch=epoch, mse = val_loss) 
+                self.logger.log_training_epoch(split="val", epoch=epoch, mse = val_loss_unweighted, mse_weighted = val_loss_weighted) 
 
             print(
-                f"Epoch {epoch+1}: Train Loss = {train_loss:.4f}, Val Loss = {val_loss:.4f}"
+                f"Epoch {epoch+1}: Train Loss weighted/unweighted = {train_loss_weighted:.4f}/{train_loss_unweighted:.4f}, Val Loss weighted/unweighted = {val_loss_weighted:.4f}/{val_loss_unweighted}"
             )
 
             
+            val_loss = val_loss_weighted # use weighted loss for validation
 
             # --- Early Stopping Check ---
             print(f'Current val loss: {val_loss}, best val loss: {best_val_loss}')
@@ -247,7 +286,9 @@ class GRU(object):
                 print(f"Early stopping triggered after {epoch+1} epochs!")
                 break
 
-    def predict(self, dataset, batch_size=512, log_name = None):
+        return best_val_loss
+
+    def predict(self, dataset, batch_size=512, log_name = None, num_workers = 4):
         """
         Generate predictions for new data.
 
@@ -267,7 +308,12 @@ class GRU(object):
         """
         # get sequences
     
-        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+        dataloader = DataLoader(dataset,
+                                batch_size=batch_size,
+                                shuffle=False,
+                                num_workers=num_workers,    # Matches SBATCH -c 2 request
+                                pin_memory=True, # makes loading to GPU faster
+                            )
         self.model.eval()
         all_predictions = []
 
@@ -276,9 +322,9 @@ class GRU(object):
 
             for batch_idx, (X_batch, lengths_batch, y_batch, _, idxs) in loop:
                 X_batch, lengths_batch, y_batch = (
-                    X_batch.to(device),
+                    X_batch.to(device, non_blocking=True),
                     lengths_batch.cpu(),
-                    y_batch.to(device),
+                    y_batch.to(device, non_blocking=True),
                 )
                 y_pred = self.model(X_batch, lengths_batch)  # Forward pass
                 all_predictions.append(y_pred)

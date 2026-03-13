@@ -7,7 +7,7 @@ from sklearn.preprocessing import StandardScaler
 import numpy as np
 from numba import njit
 from torch.nn.utils.rnn import pad_sequence
-
+from denseweight import DenseWeight
 
 
 # first some helper functions
@@ -75,7 +75,8 @@ class GRURainSeqDataset(Dataset):
                  input_dir,
                  cols_to_use,
                  subset=1,
-                 weighting=None # not yet implemented
+                 weighting=None, # "denseweight"
+                 alpha_denseweight = 1.0
                  ):
 
         # --- Load data ------------------------------------------------------------------
@@ -109,9 +110,16 @@ class GRURainSeqDataset(Dataset):
         # get sequences
         sequences = self.create_sequences(features_gru, vertgroups)
 
-        self.targets = torch.tensor(targets.to_numpy(), dtype=torch.float32)
+        targets = targets.to_numpy()
 
-        self.weights = torch.ones(len(self.targets), dtype=torch.float32)
+        if weighting == "denseweight":
+            dw = DenseWeight(alpha=alpha_denseweight) # alpha = 0 for uniform sampling
+            weights = dw.fit(targets)
+            self.weights = torch.tensor(weights, dtype=torch.float32)
+        else:
+            self.weights = torch.ones(len(targets), dtype=torch.float32)
+        
+        self.targets = torch.tensor(targets, dtype=torch.float32)
 
         self.lengths = torch.tensor([len(seq) for seq in sequences], dtype=torch.long)  # Compute lengths
 
