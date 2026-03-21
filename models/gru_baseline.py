@@ -44,6 +44,7 @@ class GRUmodel(nn.Module):
             input_dim, hidden_dim, num_layers, batch_first=True, dropout=dropout
         )
         self.fc = nn.Linear(hidden_dim, 1)  # Output single precipitation value
+        self.relu = nn.ReLU() # as precipitation can't be negative
 
     def forward(self, x, lengths):
         """
@@ -67,6 +68,7 @@ class GRUmodel(nn.Module):
         )
         _, hidden = self.GRU(x_packed)  # GRU processes only valid timesteps
         out = self.fc(hidden[-1])  # Use last hidden state of last layer
+        out = self.relu(out)
         return out.squeeze()
 
 
@@ -101,7 +103,8 @@ class GRU(object):
         dropout=0.1,
         learning_rate=0.001,
         loss_function="mse",
-        logger:Logger = None
+        logger:Logger = None,
+        tqdm_disabled = False
     ):
 
         # build model on device
@@ -125,6 +128,7 @@ class GRU(object):
         self.optimizer = optim.Adam(self.model.parameters(), lr=learning_rate)
 
         self.logger = logger
+        self.tqdm_disabled = tqdm_disabled
 
 
     def fit(
@@ -135,7 +139,6 @@ class GRU(object):
         patience=10,
         frac_valid=0.1,
         num_workers = 4,
-        save_best_epoch = False
     ):
         """
         Train the GRU model with early stopping.
@@ -196,7 +199,7 @@ class GRU(object):
             train_loss_weighted = 0
             i = 0
 
-            loop_train = tqdm(enumerate(train_loader), total=len(train_loader), leave=False)
+            loop_train = tqdm(enumerate(train_loader), total=len(train_loader), leave=False, disable=self.tqdm_disabled)
             for batch_idx, (X_batch, lengths_batch, y_batch, y_weights, _) in loop_train:
                 i += 1
                 X_batch, lengths_batch, y_batch, y_weights = (
@@ -234,10 +237,13 @@ class GRU(object):
 
             # --- Validation Step ---
             self.model.eval()
+
+            y_val_pred = []
+            y_val_true = []
             val_loss_unweighted = 0
             val_loss_weighted = 0
             with torch.no_grad():
-                loop_val = tqdm(enumerate(valid_loader), total=len(valid_loader), leave=False)
+                loop_val = tqdm(enumerate(valid_loader), total=len(valid_loader), leave=False, disable=self.tqdm_disabled)
 
                 for batch_idx, (X_batch, lengths_batch, y_batch, y_weights, _) in loop_val:
                     X_batch, lengths_batch, y_batch, y_weights = (
@@ -255,6 +261,7 @@ class GRU(object):
 
                         #non weighted loss
                         unweighted_loss = raw_loss.mean()
+
                     
                     val_loss_unweighted += unweighted_loss.item() 
                     val_loss_weighted += weighted_loss.item() 
@@ -279,6 +286,12 @@ class GRU(object):
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 epochs_no_improve = 0
+                self.best_checkpoint = {
+                    "model_state_dict": self.model.state_dict().copy(),
+                    "input_dim": self.model.GRU.input_size,
+                    "hidden_dim": self.model.GRU.hidden_size,
+                    "num_layers": self.model.GRU.num_layers,
+                }
             else:
                 epochs_no_improve += 1
 
@@ -318,7 +331,7 @@ class GRU(object):
         all_predictions = []
 
         with torch.no_grad():
-            loop = tqdm(enumerate(dataloader), total=len(dataloader), leave=False)
+            loop = tqdm(enumerate(dataloader), total=len(dataloader), leave=False, disable=self.tqdm_disabled)
 
             for batch_idx, (X_batch, lengths_batch, y_batch, _, idxs) in loop:
                 X_batch, lengths_batch, y_batch = (
@@ -328,8 +341,9 @@ class GRU(object):
                 )
                 y_pred = self.model(X_batch, lengths_batch)  # Forward pass
                 all_predictions.append(y_pred)
-            
-                self.logger.log_eval_pred(split=log_name,
+
+                if self.logger:
+                    self.logger.log_eval_pred(split=log_name,
                                           vertgroup_ids=idxs,
                                           y_true=np.asarray(y_batch.cpu()),
                                           y_pred=np.asarray(y_pred.cpu())
@@ -337,9 +351,65 @@ class GRU(object):
                 loop.set_description("Test/Predict step")
 
         return torch.cat(all_predictions, dim=0).cpu().numpy()
+    
+
+    def predict_wLabels(self, dataset, batch_size=512, log_name = None, num_workers = 4):
+        """
+        Generate predictions for new data and returns predictions with actual value.
+
+        Parameters
+        ----------
+        features : ndarray or pandas.DataFrame
+            Input feature matrix.
+        groups : ndarray
+            Group identifiers defining sequences.
+        batch_size : int, default=512
+            Batch size used during inference.
+
+        Returns
+        -------
+        predictions : ndarray of shape (n_sequences,)
+            Model-predicted precipitation values.
+        labels : ndarray of shape (n_sequences,)
+            True precipitation label
+        """
+        # get sequences
+    
+        dataloader = DataLoader(dataset,
+                                batch_size=batch_size,
+                                shuffle=False,
+                                num_workers=num_workers,    # Matches SBATCH -c 2 request
+                                pin_memory=True, # makes loading to GPU faster
+                            )
+        self.model.eval()
+        all_predictions = []
+        all_labels = []
+
+        with torch.no_grad():
+            loop = tqdm(enumerate(dataloader), total=len(dataloader), leave=False, disable=self.tqdm_disabled)
+
+            for batch_idx, (X_batch, lengths_batch, y_batch, _, idxs) in loop:
+                X_batch, lengths_batch, y_batch = (
+                    X_batch.to(device, non_blocking=True),
+                    lengths_batch.cpu(),
+                    y_batch.to(device, non_blocking=True),
+                )
+                y_pred = self.model(X_batch, lengths_batch)  # Forward pass
+                all_predictions.append(y_pred)
+                all_labels.append(y_batch)
+
+                if self.logger:
+                    self.logger.log_eval_pred(split=log_name,
+                                          vertgroup_ids=idxs,
+                                          y_true=np.asarray(y_batch.cpu()),
+                                          y_pred=np.asarray(y_pred.cpu())
+                                          )
+                loop.set_description("Test/Predict step")
+
+        return torch.cat(all_predictions, dim=0).cpu().numpy(), torch.cat(all_labels, dim=0).cpu().numpy() # also return true labels
 
     @classmethod
-    def load(cls, path, map_location=None):
+    def load(cls, path, map_location=None, tqdm_disabled=False):
         """
         Load a GRU model from disk.
 
@@ -361,6 +431,7 @@ class GRU(object):
             input_dim=checkpoint["input_dim"],
             num_hidden_nodes=checkpoint["hidden_dim"],
             num_hidden_layers=checkpoint["num_layers"],
+            tqdm_disabled = tqdm_disabled
         )
 
         model.model.load_state_dict(checkpoint["model_state_dict"])
@@ -390,3 +461,9 @@ class GRU(object):
             checkpoint["optimizer_state_dict"] = self.optimizer.state_dict()
 
         torch.save(checkpoint, path)
+
+    def save_best_checkpoint(self, path):
+        if self.best_checkpoint == None:
+            print("Saving the best checkpoint without training doesn't work")
+        else:
+            torch.save(self.best_checkpoint, path)

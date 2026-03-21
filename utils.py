@@ -70,6 +70,16 @@ def _perfscores(est_data, ref_data, doublecond_thresh=0.1):
     doublecond = np.logical_and(
         ref_data > doublecond_thresh, est_data > doublecond_thresh
     )
+
+    # return nans if there is not enough non-zero values, needs at least 2 for scatter
+    n_samples = np.sum(doublecond)
+    if n_samples < 2:
+        return {
+            "RMSE": np.nan, "scatter": np.nan, "logBias": np.nan, "ED": np.nan,
+            "N": n_samples, "N_all": len(ref_data),
+            "est_mean": np.nan, "ref_mean": np.nan, "est_std": np.nan, "ref_std": np.nan,
+        }
+
     rmse = np.sqrt(np.nanmean((est_data[doublecond] - ref_data[doublecond]) ** 2))
     db_err = 10 * np.log10(est_data[doublecond] / ref_data[doublecond])
     weights = ref_data[doublecond] / np.sum(ref_data[doublecond])
