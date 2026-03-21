@@ -67,8 +67,8 @@ def plot_fold_variance(dfm, split, metric, bounds_order):
     if d.empty: return
 
     plt.figure(figsize=(10, 6))
-    sns.boxplot(data=d, x="bound", y="value", order=bounds_order, color="lightblue", showfliers=False)
-    sns.swarmplot(data=d, x="bound", y="value", order=bounds_order, color="black", alpha=0.6)
+    sns.boxplot(data=d, x="bound", y="value", order=bounds_order, color="lightblue", showmeans=True)
+    # sns.swarmplot(data=d, x="bound", y="value", order=bounds_order, color="black", alpha=0.6)
     
     plt.title(f"{MODEL_NAME} - {metric} Stability across Folds ({split.upper()})")
     plt.grid(True, axis='y', alpha=0.3)
@@ -76,7 +76,7 @@ def plot_fold_variance(dfm, split, metric, bounds_order):
     plt.close()
 
 def plot_residual_analysis(df, split):
-    """New Plot: Residuals (Error) vs Reference Intensity."""
+    """Residuals (Error) vs Reference Intensity."""
     d = df[df["__split__"] == split].copy()
     d["error"] = d[EST_COL] - d[REF_COL]
     
