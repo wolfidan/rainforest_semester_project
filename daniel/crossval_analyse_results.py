@@ -12,7 +12,7 @@ from utils import perfscores
 # -----------------------------
 # Constants
 # -----------------------------
-BASE_DIR = "/scratch/mch/wolfensb/rainforest_semester_project/saved_models/cv_predictions"
+BASE_DIR = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Baseline"
 OUT_DIR = os.path.join(BASE_DIR, "fig_performance_GRU_vs_RF_allfolds_with_foldspread")
 os.makedirs(OUT_DIR, exist_ok=True)
 

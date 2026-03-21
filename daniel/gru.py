@@ -44,6 +44,7 @@ def _find_group_indices(groups):
 
 @njit
 def _process_groups_fast(features, start_idx, end_idx, padded_sequences):
+    # TODO: don't have to pass the padded sequence array or don't have to return it - arrays passed by reference
     """
     Populate a padded sequence array using precomputed group indices.
 
@@ -293,6 +294,8 @@ class GRU(object):
                 sys.exit()
 
         # get sequences
+        # takes every radar measurement that correspond to a group - radar measurements corresponding to a group are consecutive in the array 
+        # pad the sequences such that all of them have the same length in the batch 
         train_sequences = self.create_sequences(features, groups)
         nsamples = len(train_sequences)
         # Define train-validation split
@@ -301,7 +304,7 @@ class GRU(object):
 
         dataset = RainDataset(train_sequences, targets, weights)
         # Split dataset
-        train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+        train_dataset, val_dataset = random_split(dataset, [train_size, val_size]) # TODO: is this a second validation dataset, outside of the k-fold?
 
         weights_train = [w[3] for w in train_dataset]
         weights_valid = [w[3] for w in val_dataset]
@@ -409,9 +412,9 @@ class GRU(object):
         groups = groups.astype(np.int32)
 
         unique_groups, counts = np.unique(groups, return_counts=True)
-        max_seq_len = np.max(counts)
+        max_seq_len = np.max(counts) # max nr of radar observations per group
 
-        start_idx, end_idx = _find_group_indices(groups)
+        start_idx, end_idx = _find_group_indices(groups) # all radar observations corresponding to a gauge measurement are continuous)
 
         num_samples = len(unique_groups)
         num_features = features.shape[1]

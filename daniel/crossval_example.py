@@ -1,7 +1,7 @@
 # %%
 import pandas as pd
 import pickle
-from rf import RandomForestRegressorBC
+from daniel.rf import RandomForestRegressorBC
 from gru import GRU
 import os
 from sklearn.preprocessing import StandardScaler
@@ -192,7 +192,7 @@ groups = pickle.load(open(os.path.join(INPUT_DIR, "grouping_idx_x0y0.p"), "rb"))
 
 features = radar[COLS_TO_USE]
 vertgroups = groups["grp_vertical"]
-targets = gauge["RRE150Z0"]  # must be indexed by vertgroup ids for loc[] usage below
+targets = gauge["RRE150Z0"]  # must be indexed by vertgroup ids for loc[] usage below 
 
 # Subset data for faster example running
 selected_groups, subset_mask = random_group_subset(vertgroups, SUBSET, random_state=42)
@@ -228,6 +228,7 @@ for fold, (vertgroups_train, vertgroups_test) in enumerate(kf, start=1):
 
     X_train, X_test = features_gru.loc[train_mask], features_gru.loc[test_mask]
     # See remark at the end of random_group_subset to understand why we need sorted
+    # TODO: I'm not sure - doesn't sorted just 
     y_train, y_test = (
         targets.loc[sorted(vertgroups_train)],
         targets.loc[sorted(vertgroups_test)],
