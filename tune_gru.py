@@ -4,7 +4,7 @@ import torch
 from datasets.GRURainSeqDataset import GRURainSeqDataset
 from torch.utils.data import random_split
 from models.gru_baseline import GRU
-from utils import perfscores
+from analyse_models.utils import perfscores
 import numpy as np
 
 INPUT_DIR = "/store_new/mch/msrad/radar/radar_database_v2/rf_input_data/"
@@ -14,7 +14,7 @@ COLS_TO_USE = ["RADAR", "HEIGHT", "ISO0_HEIGHT", "ZH_mean", "ZV_mean", "KDP_mean
 SUBSET = 0.3  # 30% of data for tuning
 N_TRIALS = 30 # Number of parameter combinations to try
 NUM_WORKERS = 4
-MAX_EPOCHS = 25
+MAX_EPOCHS = 30
 
 def objective(trial):
     print(f"Running trial {trial.number}")
@@ -26,7 +26,9 @@ def objective(trial):
         "learning_rate": trial.suggest_float("learning_rate", 1e-4, 1e-2, log=True),
         "batch_size": trial.suggest_categorical("batch_size", [256, 512, 1024]),
         "alpha_denseweight": trial.suggest_float("alpha_denseweight", 0.0, 1.0),
-        "loss_function": trial.suggest_categorical("loss_function", ["mse", "mae", "huber"])
+        "loss_function": trial.suggest_categorical("loss_function", ["mse", "mae", "huber"]),
+        "layer_norm": trial.suggest_categorical("layer_norm", [True, False]),
+        "lr_scheduler_factor": trial.suggest_float("lr_scheduler_factor", 0.3, 0.7),
     }
 
     # Load Subset Dataset
@@ -47,6 +49,8 @@ def objective(trial):
         num_hidden_layers=params["num_hidden_layers"],
         dropout=params["dropout"],
         learning_rate=params["learning_rate"],
+        layer_norm=params["layer_norm"],
+        lr_scheduler_factor=params["lr_scheduler_factor"],
         tqdm_disabled = True
     )
 

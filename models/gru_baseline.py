@@ -38,14 +38,16 @@ class GRUmodel(nn.Module):
         Dropout probability between GRU layers.
     """
 
-    def __init__(self, input_dim, hidden_dim=64, num_layers=1, dropout=0):
+    def __init__(self, input_dim, hidden_dim=64, num_layers=1, dropout=0, layer_norm = False):
         super(GRUmodel, self).__init__()
         self.GRU = nn.GRU(
             input_dim, hidden_dim, num_layers, batch_first=True, dropout=dropout
         )
+        self.ln = nn.LayerNorm(hidden_dim) # should help with the high variance in the outputs -> makes it easier for the linear layer as it doesn't have to handle big scale shifts
         self.fc = nn.Linear(hidden_dim, 1)  # Output single precipitation value
-        self.relu = nn.ReLU() # as precipitation can't be negative
+        # self.relu = nn.ReLU() # as precipitation can't be negative --- we shouldn't use that, if output is negative at first, it will never start learning
 
+        self.layer_norm = layer_norm
     def forward(self, x, lengths):
         """
         Forward pass of the GRU model.
@@ -66,10 +68,14 @@ class GRUmodel(nn.Module):
         x_packed = pack_padded_sequence(
             x, lengths, batch_first=True, enforce_sorted=False
         )
-        _, hidden = self.GRU(x_packed)  # GRU processes only valid timesteps
-        out = self.fc(hidden[-1])  # Use last hidden state of last layer
-        out = self.relu(out)
-        return out.squeeze()
+        _, hidden = self.GRU(x_packed)  # GRU processes only valid timesteps, hidden shape is num_layers,batch_size,hidden_dim for 
+        last_hidden = hidden[-1] # extract last layers hidden dim
+        if self.layer_norm:
+            last_hidden = self.ln(last_hidden)
+        out = self.fc(last_hidden)  # Use last hidden state of last layer
+
+        # Use squeeze(-1) to only drop the feature dimension (keep batch dim) - could lead to error if the batch only constist of one sample otherwise
+        return out.squeeze(-1)
 
 
 class GRU(object):
@@ -103,16 +109,21 @@ class GRU(object):
         dropout=0.1,
         learning_rate=0.001,
         loss_function="mse",
+        layer_norm = False,
+        lr_scheduler_factor = 0.5,
         logger:Logger = None,
         tqdm_disabled = False
     ):
 
         # build model on device
         self.model = GRUmodel(
-            input_dim, num_hidden_nodes, num_hidden_layers, dropout
+            input_dim, num_hidden_nodes, num_hidden_layers, dropout, layer_norm=layer_norm
         ).to(device)
 
         self.loss_function_text = loss_function
+
+        # Initialize Scaler for Mixed Precision
+        self.scaler = torch.cuda.amp.GradScaler()
 
         # loss
         if loss_function.upper() == "MSE":
@@ -124,8 +135,15 @@ class GRU(object):
         else:
             raise ValueError(f"Unknown loss function {loss_function}")
 
-        # optimizer
         self.optimizer = optim.Adam(self.model.parameters(), lr=learning_rate)
+
+        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer, 
+            mode='min', 
+            factor=lr_scheduler_factor,     # Reduce LR by a factor -> 0.5 = half
+            patience=3,      # nr of epochs with no improvement to wait before dropping
+            verbose=True
+        )
 
         self.logger = logger
         self.tqdm_disabled = tqdm_disabled
@@ -220,8 +238,15 @@ class GRU(object):
                     #non weighted loss
                     unweighted_loss = raw_loss.mean()
                 
-                weighted_loss.backward()
-                self.optimizer.step()
+                # we need to do that with scaler beacause of autocast - otherwise, as it's cast to 16 bits, we sometimes would have negative values
+                # Scale loss and call backward
+                self.scaler.scale(weighted_loss).backward()
+                
+                # Step the optimizer via the scaler
+                self.scaler.step(self.optimizer)
+                
+                # Update the scale for next iteration
+                self.scaler.update()
 
                 train_loss_unweighted += unweighted_loss.item() 
                 train_loss_weighted += weighted_loss.item() 
@@ -238,8 +263,6 @@ class GRU(object):
             # --- Validation Step ---
             self.model.eval()
 
-            y_val_pred = []
-            y_val_true = []
             val_loss_unweighted = 0
             val_loss_weighted = 0
             with torch.no_grad():
@@ -277,12 +300,13 @@ class GRU(object):
             print(
                 f"Epoch {epoch+1}: Train Loss weighted/unweighted = {train_loss_weighted:.4f}/{train_loss_unweighted:.4f}, Val Loss weighted/unweighted = {val_loss_weighted:.4f}/{val_loss_unweighted}"
             )
-
             
             val_loss = val_loss_weighted # use weighted loss for validation
 
+            # LR scheduler step
+            self.scheduler.step(val_loss)
+
             # --- Early Stopping Check ---
-            print(f'Current val loss: {val_loss}, best val loss: {best_val_loss}')
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 epochs_no_improve = 0
@@ -294,6 +318,8 @@ class GRU(object):
                 }
             else:
                 epochs_no_improve += 1
+
+            print(f'Current val loss: {val_loss}, best val loss: {best_val_loss}')
 
             if epochs_no_improve >= patience:
                 print(f"Early stopping triggered after {epoch+1} epochs!")
@@ -409,7 +435,7 @@ class GRU(object):
         return torch.cat(all_predictions, dim=0).cpu().numpy(), torch.cat(all_labels, dim=0).cpu().numpy() # also return true labels
 
     @classmethod
-    def load(cls, path, map_location=None, tqdm_disabled=False):
+    def load(cls, path, map_location=None, tqdm_disabled=False, logger:Logger = None):
         """
         Load a GRU model from disk.
 
@@ -431,7 +457,8 @@ class GRU(object):
             input_dim=checkpoint["input_dim"],
             num_hidden_nodes=checkpoint["hidden_dim"],
             num_hidden_layers=checkpoint["num_layers"],
-            tqdm_disabled = tqdm_disabled
+            tqdm_disabled = tqdm_disabled,
+            logger = logger
         )
 
         model.model.load_state_dict(checkpoint["model_state_dict"])
