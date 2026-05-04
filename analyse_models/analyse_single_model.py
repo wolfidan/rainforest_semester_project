@@ -10,9 +10,9 @@ sns.set_theme(palette="colorblind", style="whitegrid")
 # -----------------------------
 # USER INPUT
 # -----------------------------
-MODEL_NAME = "GRU_Baseline_Denseweight_alpha10"
-INPUT_FILE = "saved_models/GRU_Baseline_Denseweight_alpha10/cv_1_GRU_Baseline_Denseweight_alpha10_all_folds.parquet"
-OUT_DIR = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/cv_1_GRU_Baseline_Denseweight_alpha10_all_folds/plots"
+MODEL_NAME = "GRU_Baseline_optimized_logBias_scatter"
+INPUT_FILE = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Baseline_optimized_logBias_scatter/cv_1_GRU_Baseline_optimized_logBias_scatter_all_folds.parquet"
+OUT_DIR = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Baseline_optimized_logBias_scatter/plots"
 
 os.makedirs(OUT_DIR, exist_ok=True)
 

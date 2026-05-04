@@ -18,14 +18,29 @@ from utils import perfscores
 
 # PATH points to the allfolds file
 
-MODEL_1_NAME = "GRU_Denseweight_alpa10"
-MODEL_1_PATH = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Baseline_Denseweight_alpha10/cv_1_GRU_Baseline_Denseweight_alpha10_all_folds.parquet"
+# MODEL_1_NAME = "GRU_BL_optim"
+# MODEL_1_PATH = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Baseline_optimized_logBias_scatter/cv_1_GRU_Baseline_optimized_logBias_scatter_all_folds.parquet"
+
+# MODEL_1_NAME = "GRU_BL_alpha10"
+# MODEL_1_PATH = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Baseline_Denseweight_alpha10/cv_1_GRU_Baseline_Denseweight_alpha10_all_folds.parquet"
+
+# MODEL_1_NAME = "GRU_layernorm"
+# MODEL_1_PATH = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Baseline_denseweight_layernorm/cv_1_GRU_Baseline_denseweight_layernorm_all_folds.parquet"
+
+# MODEL_1_NAME = "GRU_diverseOptim2"
+# MODEL_1_PATH = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Baseline_diverseOptim2/cv_1_GRU_Baseline_diverseOptim2_all_folds.parquet"
+
+MODEL_1_NAME = "GRU_Bidirectional"
+MODEL_1_PATH = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Bidirectional/cv_1_GRU_Bidirectional_all_folds.parquet"
+
+# MODEL_2_NAME = "GRU_BL"
+# MODEL_2_PATH = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Baseline_Denseweight_alpha10/cv_1_GRU_Baseline_Denseweight_alpha10_all_folds.parquet"
 
 MODEL_2_NAME = "RF"
 MODEL_2_PATH = "/scratch/mch/wolfensb/rainforest_semester_project/saved_models/cv_predictions/cv_pred_RF_all_folds.parquet"
 
-
-OUT_DIR = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Baseline_Denseweight_alpha10/comparison_RF"
+OUT_DIR = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Bidirectional/comparison_RF"
+# OUT_DIR = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Baseline_optimized_logBias_scatter/comparison_GRU_Baseline_Denseweight_alpha10"
 os.makedirs(OUT_DIR, exist_ok=True)
 
 EST_COL = "y_pred"
@@ -150,7 +165,7 @@ def save_boxplot_compare(df, outdir, split, metric, bounds_order):
         ax.set_title(f"{split.upper()} • ref in [{b}]")
         ax.grid(True, alpha=0.3)
 
-    fig.suptitle(f"{metric} — per-fold distribution (GRU vs RF)")
+    fig.suptitle(f"{metric} — per-fold distribution")
     fig.tight_layout()
     fpath = os.path.join(outdir, f"box_{metric}_{split}.png")
     fig.savefig(fpath, dpi=200)
@@ -190,8 +205,8 @@ def save_summary_bar(df, outdir, split, metric, bounds_order):
     m_rf,  s_rf,  c_rf  = extract(MODEL_2_NAME)
 
     fig, ax = plt.subplots(figsize=(5 + 1.2 * len(bounds_unique), 4))
-    ax.bar(x - width / 2, m_gru, width, yerr=s_gru, capsize=3, label=f"GRU (nfold={int(np.nanmax(c_gru))})")
-    ax.bar(x + width / 2, m_rf,  width, yerr=s_rf,  capsize=3, label=f"RF (nfold={int(np.nanmax(c_rf))})")
+    ax.bar(x - width / 2, m_gru, width, yerr=s_gru, capsize=3, label=f"{MODEL_1_NAME} (nfold={int(np.nanmax(c_gru))})")
+    ax.bar(x + width / 2, m_rf,  width, yerr=s_rf,  capsize=3, label=f"{MODEL_2_NAME} (nfold={int(np.nanmax(c_rf))})")
 
     ax.set_xticks(x)
     ax.set_xticklabels([str(b) for b in bounds_unique])
@@ -243,8 +258,8 @@ def save_method_scatter_allfolds(outdir, split, bound_key):
         hi = max(xlim[1], ylim[1])
         ax[i].plot([lo, hi], [lo, hi])
         
-        ax[i].set_xlabel("Reference precip")
-        ax[i].set_ylabel("Estimated precip")
+        ax[i].set_xlabel("Reference precip [mm]")
+        ax[i].set_ylabel("Estimated precip [mm]")
         ax[i].set_title(f"{method}: {split.upper()} scatter (bound={bound_key})")
         ax[i].grid(True, which="both", alpha=0.2)
         ax[i].legend()

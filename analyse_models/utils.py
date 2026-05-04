@@ -1,6 +1,9 @@
+import os
+
 import numpy as np
 from collections import OrderedDict
 from scipy.stats import energy_distance
+import pandas as pd
 
 
 def perfscores(est_data, ref_data, bounds=None, array=False):
@@ -186,3 +189,41 @@ def quantile(data, weights, quantile):
         imr = data.reshape((np.prod(n[:-1]), n[-1]))
         result = np.apply_along_axis(quantile_1D, -1, imr, weights, quantile)
         return result.reshape(n[:-1])
+
+
+def load_allfold(path: str,) -> pd.DataFrame:
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Missing file: {path}")
+
+    df = pd.read_parquet(path)
+
+    # --- split detection ---
+    if "split" in df.columns:
+        split_col = "split"
+        df["__split__"] = df[split_col].astype(str).str.lower()
+    elif "is_train" in df.columns:
+        df["__split__"] = np.where(df["is_train"].astype(bool), "train", "test")
+    elif "dataset" in df.columns:
+        df["__split__"] = df["dataset"].astype(str).str.lower()
+    else:
+        raise ValueError(
+            f"{path}: can't find a split indicator column. "
+            "Expected one of: 'split', 'is_train', 'dataset'. "
+            f"Columns are: {list(df.columns)}"
+        )
+
+    # enforce train/test presence (at least one)
+    allowed = {"train", "test"}
+    present = set(df["__split__"].dropna().unique())
+    if not (present & allowed):
+        raise ValueError(f"{path}: detected split values={present}, but no train/test found.")
+
+    # --- fold column ---
+    if "fold" not in df.columns:
+        raise KeyError(f"{path}: missing required column 'fold'. Columns are: {list(df.columns)}")
+
+    # normalize fold to string labels (keeps original values but consistent)
+    df["__fold__"] = df["fold"].astype(str)
+
+
+    return df

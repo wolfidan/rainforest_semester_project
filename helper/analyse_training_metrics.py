@@ -12,14 +12,14 @@ def analyze_training_stats(stats_path, output_dir, metric="mse"):
         print(f"File not found: {stats_path}")
         return None
 
-    # 1. Load the data
+    # Load the data
     df = pd.read_parquet(stats_path)
     
-    # 2. Setup Plotting
+    # Setup Plotting
     sns.set_theme(style="whitegrid")
     plt.figure(figsize=(12, 6))
     
-    # 3. Plot Training vs Validation Loss
+    # Plot Training vs Validation Loss
     # We use lineplot which automatically calculates mean and confidence intervals across folds
     plot = sns.lineplot(
         data=df, 
@@ -44,7 +44,7 @@ def analyze_training_stats(stats_path, output_dir, metric="mse"):
     fpath = os.path.join(output_dir, f"train_val_stats_{metric}.png")
     plt.savefig(fpath, dpi=200)
 
-    # 4. Calculate Interesting Values
+    # Calculate Interesting Values
     summary = {}
     
     # Final loss per split (averaged across folds)
@@ -64,7 +64,6 @@ def analyze_training_stats(stats_path, output_dir, metric="mse"):
 
     return summary
 
-# Example Usage:
 # stats_file = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/cv_1_GRU_Baseline_training_stats.parquet"
 # results = analyze_training_results(stats_file)
 # print("Summary Statistics:", results)

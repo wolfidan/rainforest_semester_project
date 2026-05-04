@@ -7,14 +7,25 @@ from models.gru_baseline import GRU
 from analyse_models.utils import perfscores
 import numpy as np
 
-INPUT_DIR = "/store_new/mch/msrad/radar/radar_database_v2/rf_input_data/"
+INPUT_DIR = "/store_new/mch/msrad/radar/radar_database_v2/rf_input_data_qc/"
 OUTPUT_DIR = "tuning_GRU"
-STUDY_NAME = "tune_gru"
-COLS_TO_USE = ["RADAR", "HEIGHT", "ISO0_HEIGHT", "ZH_mean", "ZV_mean", "KDP_mean", "RHOHV_mean"]
-SUBSET = 0.3  # 30% of data for tuning
+STUDY_NAME = "tune_gru_diverseOptim3"
+COLS_TO_USE = [
+    "RADAR",
+    "HEIGHT",
+    "ISO0_HEIGHT",
+    "ZH_mean",
+    "ZV_mean",
+    "KDP_mean",
+    "RHOHV_mean",
+    "SW_mean",
+    "AH_mean",
+    "VISIB_mean",
+    "SWEEP"]
+SUBSET = 0.5  # 50% of data for tuning
 N_TRIALS = 30 # Number of parameter combinations to try
 NUM_WORKERS = 4
-MAX_EPOCHS = 30
+MAX_EPOCHS = 50
 
 def objective(trial):
     print(f"Running trial {trial.number}")
@@ -22,12 +33,13 @@ def objective(trial):
     params = {
         "num_hidden_nodes": trial.suggest_int("num_hidden_nodes", 32, 256, step=32),
         "num_hidden_layers": trial.suggest_int("num_hidden_layers", 1, 3),
-        "dropout": trial.suggest_float("dropout", 0.0, 0.5),
+        "dropout": trial.suggest_float("dropout", 0.0, 0.25),
         "learning_rate": trial.suggest_float("learning_rate", 1e-4, 1e-2, log=True),
-        "batch_size": trial.suggest_categorical("batch_size", [256, 512, 1024]),
+        "batch_size": trial.suggest_categorical("batch_size", [128, 256, 512]),
         "alpha_denseweight": trial.suggest_float("alpha_denseweight", 0.0, 1.0),
-        "loss_function": trial.suggest_categorical("loss_function", ["mse", "mae", "huber"]),
-        "layer_norm": trial.suggest_categorical("layer_norm", [True, False]),
+        "loss_function": trial.suggest_categorical("loss_function", ["mse", "huber"]),
+        # "layer_norm": trial.suggest_categorical("layer_norm", [True, False]),
+        "sort_by_height": trial.suggest_categorical("sort_by_height", [True, False]),
         "lr_scheduler_factor": trial.suggest_float("lr_scheduler_factor", 0.3, 0.7),
     }
 
@@ -36,10 +48,12 @@ def objective(trial):
                                 cols_to_use=COLS_TO_USE,
                                 subset=SUBSET,
                                 weighting="denseweight",
-                                alpha_denseweight=params["alpha_denseweight"])
+                                alpha_denseweight=params["alpha_denseweight"],
+                                sort_by_height=params["sort_by_height"]
+                                )
     
     # split dataset
-    train_dataset, test_dataset = random_split(dataset, [0.8, 0.2], generator=torch.Generator().manual_seed(42))
+    train_dataset, test_dataset = random_split(dataset, [0.7, 0.3], generator=torch.Generator().manual_seed(42))
 
     print(f"Size of dataset: {len(dataset)}")
     
@@ -49,7 +63,7 @@ def objective(trial):
         num_hidden_layers=params["num_hidden_layers"],
         dropout=params["dropout"],
         learning_rate=params["learning_rate"],
-        layer_norm=params["layer_norm"],
+        layer_norm=False,
         lr_scheduler_factor=params["lr_scheduler_factor"],
         tqdm_disabled = True
     )
@@ -77,19 +91,29 @@ def objective(trial):
     if np.isnan(y_pred).any():
         print("WARNING: Model predicted NaNs!")
     
-    # Calculate specialized QPE metrics
-    metrics = perfscores(y_pred, y_true, bounds=[0, 1, 10, np.inf])
+    # Calculate QPE metrics
+    metrics = perfscores(y_pred, y_true, bounds=[0, 1, np.inf])
     
     scatter = metrics["all"]["scatter"]
     abs_log_bias = abs(metrics["all"]["logBias"])
 
-    if np.isnan(scatter) or np.isnan(abs_log_bias): # is nan if predictions are all 0
-        # Return a large penalty value (since we are minimizing)
-        return 10.0, 10.0
+    rmse_gt1 = metrics["1.0-inf"]["RMSE"]# ref precip in [1mm, inf)
+
+    ed = metrics["all"]["ED"]
+
+    alpha = 1/0.2
+    beta = 1/2.1
+    obj1 = alpha * abs_log_bias + beta * scatter # global
+    obj2 = rmse_gt1 # extreme
+    obj3 = ed # distribution match
+
+    # if np.isnan(scatter) or np.isnan(abs_log_bias): # is nan if predictions are all 0
+    #     # Return a large penalty value (since we are minimizing)
+    #     return 10.0, 10.0
 
 
 
-    return scatter, abs_log_bias
+    return obj1, obj2, obj3
 
 if __name__ == "__main__":
     print("Starting train_gru_kfold.py script", flush=True)
@@ -101,7 +125,7 @@ if __name__ == "__main__":
     
     # Create a study to MINIMIZE scatter and log bias
     study = optuna.create_study(
-        directions=["minimize", "minimize"], 
+        directions=["minimize", "minimize", "minimize"], 
         study_name=STUDY_NAME,
         storage=f"sqlite:///{OUTPUT_DIR}/optuna_tune.db",
         load_if_exists=True
@@ -123,6 +147,6 @@ if __name__ == "__main__":
 
     # Save all trial data to CSV
     df = study.trials_dataframe()
-    df.to_csv(f"{OUTPUT_DIR}/optuna_tuning_results.csv", index=False)
+    df.to_csv(f"{OUTPUT_DIR}/optuna_tuning_results_{STUDY_NAME}.csv", index=False)
     
-    print(f"\nResults saved to {OUTPUT_DIR}/optuna_tuning_results.csv")
+    print(f"\nResults saved to {OUTPUT_DIR}/optuna_tuning_results_{STUDY_NAME}.csv")

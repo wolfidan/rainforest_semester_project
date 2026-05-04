@@ -19,7 +19,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 # --- Define GRU Model ---
-class GRUmodel(nn.Module):
+class GRUmodelBidirectional(nn.Module):
     """
     GRU-based neural network for precipitation prediction.
 
@@ -39,15 +39,13 @@ class GRUmodel(nn.Module):
     """
 
     def __init__(self, input_dim, hidden_dim=64, num_layers=1, dropout=0, layer_norm = False):
-        super(GRUmodel, self).__init__()
+        super(GRUmodelBidirectional, self).__init__()
         self.GRU = nn.GRU(
-            input_dim, hidden_dim, num_layers, batch_first=True, dropout=dropout
+            input_dim, hidden_dim, num_layers, batch_first=True, dropout=dropout, bidirectional=True
         )
-        self.ln = nn.LayerNorm(hidden_dim) # should help with the high variance in the outputs -> makes it easier for the linear layer as it doesn't have to handle big scale shifts
-        self.fc = nn.Linear(hidden_dim, 1)  # Output single precipitation value
+        self.fc = nn.Linear(hidden_dim * 2, 1)  # Output single precipitation value
         # self.relu = nn.ReLU() # as precipitation can't be negative --- we shouldn't use that, if output is negative at first, it will never start learning
 
-        self.layer_norm = layer_norm
     def forward(self, x, lengths):
         """
         Forward pass of the GRU model.
@@ -69,16 +67,18 @@ class GRUmodel(nn.Module):
             x, lengths, batch_first=True, enforce_sorted=False
         )
         _, hidden = self.GRU(x_packed)  # GRU processes only valid timesteps, hidden shape is num_layers,batch_size,hidden_dim for 
-        last_hidden = hidden[-1] # extract last layers hidden dim
-        if self.layer_norm:
-            last_hidden = self.ln(last_hidden)
-        out = self.fc(last_hidden)  # Use last hidden state of last layer
+        # forward hidden state of the last layer
+        hidden_fwd = hidden[-2] 
+        # backward hidden state of the last layer
+        hidden_bwd = hidden[-1]
 
+        last_hidden = torch.cat((hidden_fwd, hidden_bwd), dim=1)
+        out = self.fc(last_hidden)  # Use last hidden state of last layer
         # Use squeeze(-1) to only drop the feature dimension (keep batch dim) - could lead to error if the batch only constist of one sample otherwise
         return out.squeeze(-1)
 
 
-class GRU(object):
+class GRUBidirectional(object):
     """
     High-level wrapper for training and inference of a GRU precipitation model.
 
@@ -116,7 +116,7 @@ class GRU(object):
     ):
 
         # build model on device
-        self.model = GRUmodel(
+        self.model = GRUmodelBidirectional(
             input_dim, num_hidden_nodes, num_hidden_layers, dropout, layer_norm=layer_norm
         ).to(device)
 

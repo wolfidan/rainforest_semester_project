@@ -1,4 +1,5 @@
-from models.gru_baseline import GRU
+# from models.gru_baseline import GRU
+from models.gru_bidirectional import GRUBidirectional
 from sklearn.model_selection import KFold
 from torch.utils.data import Subset, random_split
 from datasets.GRURainSeqDataset import GRURainSeqDataset
@@ -15,22 +16,34 @@ This script performs K-fold cross-validation for GRU
 ##########################################################################################################
 
 # hyperparameters from optimized pareto front by optimizing for scatter and abs log bias, trial 8, which focuses more on log bias
-hyperparam_dict = {
-    'num_hidden_nodes': 64,
-    'num_hidden_layers': 2,
-    'dropout': 0.1,
-    'learning_rate': 0.001,
-    'batch_size': 512,
-    'alpha_denseweight': 0.8106510846663288,
-    'loss_function': 'mse'
-}
+# hyperparam_dict = {
+#     'num_hidden_nodes': 64,
+#     'num_hidden_layers': 2,
+#     'dropout': 0.1,
+#     'learning_rate': 0.001,
+#     'batch_size': 512,
+#     'alpha_denseweight': 0.8106510846663288,
+#     'loss_function': 'mse'
+# }
 
-MODEL_NAME = "GRU_Baseline_denseweight_layernorm"
+hyperparam_dict = {'num_hidden_nodes': 256,
+                   'num_hidden_layers': 2,
+                   'dropout': 0.23076003898617042,
+                   'learning_rate': 0.00010156067242988125,
+                   'batch_size': 128,
+                   'alpha_denseweight': 0.9,
+                   'loss_function': 'mse',
+                   'layer_norm': False,
+                   'lr_scheduler_factor': 0.647994463601564
+            }
+
+MODEL_NAME = "GRU_Bidirectional"
 FILENAME_PREFIX = "cv_1"
-INPUT_DIR = "/store_new/mch/msrad/radar/radar_database_v2/rf_input_data/"
+#INPUT_DIR = "/store_new/mch/msrad/radar/radar_database_v2/rf_input_data/" # without qc
+INPUT_DIR = "/store_new/mch/msrad/radar/radar_database_v2/rf_input_data_qc/" # with qc
 OUTPUT_DIR = f"/scratch/mch/tkluser/rainforest_semester_project/saved_models/{MODEL_NAME}"
-SUBSET = 0.5  # Use a subset of data for faster example running (max = 1.0)
-MAX_EPOCHS = 50
+SUBSET = 1  # Use a subset of data for faster example running (max = 1.0)
+MAX_EPOCHS = 60
 NUM_WORKERS = 4 # adapt in slurm job accordingly
 N_SPLITS = 4 # K-fold split
 COLS_TO_USE = [
@@ -44,6 +57,7 @@ COLS_TO_USE = [
     "SW_mean",
     "AH_mean",
     "VISIB_mean",
+    "SWEEP"
 ] # Which features to use (see rainforest paper for justification)
 
 
@@ -70,9 +84,10 @@ dataset = GRURainSeqDataset(input_dir=INPUT_DIR,
                             cols_to_use=COLS_TO_USE,
                             subset=SUBSET,
                             weighting="denseweight",
-                            alpha_denseweight=hyperparam_dict["alpha_denseweight"]
+                            alpha_denseweight=hyperparam_dict["alpha_denseweight"],
+                            sort_by_height=True
                             )
-print("Loading dataset successful", flush=True)
+print(f"Loading dataset successful, length: {len(dataset)}", flush=True)
 
 try:
     # K-fold
@@ -87,7 +102,7 @@ try:
         train_test_subset, _ = random_split(train_subset, [0.5, 0.5]) # test on a subset of the train set for train accuracy
 
         # instatiate and fit model
-        gru_model = GRU(input_dim=dataset.gru_input_dim,
+        gru_model = GRUBidirectional(input_dim=dataset.gru_input_dim,
                         logger=logger,
                         num_hidden_layers=hyperparam_dict["num_hidden_layers"],
                         num_hidden_nodes=hyperparam_dict["num_hidden_nodes"],
@@ -107,9 +122,11 @@ try:
         gru_model.save_best_checkpoint(best_checkpoint_path)
         
         # load best checkpoint, predict train set (subset of train set) and test set
-        gru_model = GRU.load(best_checkpoint_path, tqdm_disabled=True, logger=logger)
+        gru_model = GRUBidirectional.load(best_checkpoint_path, tqdm_disabled=True, logger=logger)
         y_pred_train = gru_model.predict(train_test_subset, log_name="train", num_workers=NUM_WORKERS)
         y_pred_test = gru_model.predict(test_subset, log_name="test", num_workers=NUM_WORKERS)
+        
+        logger.write_to_file(outdir=OUTPUT_DIR)
 except Exception as e:
     raise e
 finally:      
