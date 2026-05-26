@@ -68,7 +68,7 @@ def perfscores(est_data, ref_data, bounds=None, array=False):
     return all_metrics
 
 
-def _perfscores(est_data, ref_data, doublecond_thresh=0.1):
+def _perfscores(est_data, ref_data, doublecond_thresh=0.01):
     """An unbounded version of the previous function"""
     doublecond = np.logical_and(
         ref_data > doublecond_thresh, est_data > doublecond_thresh

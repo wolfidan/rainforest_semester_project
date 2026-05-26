@@ -25,19 +25,41 @@ This script performs K-fold cross-validation for GRU
 #     'alpha_denseweight': 0.8106510846663288,
 #     'loss_function': 'mse'
 # }
+# study nr 2
+# hyperparam_dict = {'num_hidden_nodes': 256,
+#                    'num_hidden_layers': 2,
+#                    'dropout': 0.23076003898617042,
+#                    'learning_rate': 0.00010156067242988125,
+#                    'batch_size': 128,
+#                    'alpha_denseweight': 0.9,
+#                    'loss_function': 'mse',
+#                    'layer_norm': False,
+#                    'lr_scheduler_factor': 0.647994463601564
+#             }
 
-hyperparam_dict = {'num_hidden_nodes': 256,
-                   'num_hidden_layers': 2,
-                   'dropout': 0.23076003898617042,
-                   'learning_rate': 0.00010156067242988125,
-                   'batch_size': 128,
-                   'alpha_denseweight': 0.9,
-                   'loss_function': 'mse',
-                   'layer_norm': False,
-                   'lr_scheduler_factor': 0.647994463601564
-            }
+# study nr 3
+hyperparam_dict = {'num_hidden_nodes': 96,
+ 'num_hidden_layers': 3,
+ 'dropout': 0.1676263814467597,
+ 'learning_rate': 0.00012631341749198117,
+ 'batch_size': 512,
+ 'alpha_denseweight': 0.7326962270498213,
+ 'loss_function': 'mse',
+ 'sort_by_height': True,
+ 'lr_scheduler_factor': 0.6988761757979692}
 
-MODEL_NAME = "GRU_Bidirectional"
+#baseline
+# hyperparam_dict = {'num_hidden_nodes': 64,
+#  'num_hidden_layers': 1,
+#  'dropout': 0.1,
+#  'learning_rate': 0.001,
+#  'batch_size': 512,
+#  'alpha_denseweight': 1,
+#  'loss_function': 'mse',
+#  'sort_by_height': False,
+#  'lr_scheduler_factor': 1}
+
+MODEL_NAME = "GRU_bidirectional_s3"
 FILENAME_PREFIX = "cv_1"
 #INPUT_DIR = "/store_new/mch/msrad/radar/radar_database_v2/rf_input_data/" # without qc
 INPUT_DIR = "/store_new/mch/msrad/radar/radar_database_v2/rf_input_data_qc/" # with qc
