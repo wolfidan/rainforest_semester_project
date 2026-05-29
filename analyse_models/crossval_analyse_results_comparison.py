@@ -12,34 +12,14 @@ import matplotlib.pyplot as plt
 
 from utils import perfscores
 
-# -----------------------------
-# Constants
-# -----------------------------
+MODEL_1_NAME = "RF_spline"
+MODEL_1_PATH = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/RF_spline/cv_pred_RF_spline_all_folds.parquet"
 
-# PATH points to the allfolds file
+MODEL_2_NAME = "GRU_optimized"
+MODEL_2_PATH = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_optimized3/cv_1_GRU_optimized3_all_folds.parquet"
 
-# MODEL_1_NAME = "GRU_BL_optim"
-# MODEL_1_PATH = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Baseline_optimized_logBias_scatter/cv_1_GRU_Baseline_optimized_logBias_scatter_all_folds.parquet"
 
-# MODEL_1_NAME = "GRU_BL_alpha10"
-# MODEL_1_PATH = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Baseline_Denseweight_alpha10/cv_1_GRU_Baseline_Denseweight_alpha10_all_folds.parquet"
-
-# MODEL_1_NAME = "GRU_layernorm"
-# MODEL_1_PATH = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Baseline_denseweight_layernorm/cv_1_GRU_Baseline_denseweight_layernorm_all_folds.parquet"
-
-# MODEL_1_NAME = "GRU_diverseOptim2"
-# MODEL_1_PATH = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Baseline_diverseOptim2/cv_1_GRU_Baseline_diverseOptim2_all_folds.parquet"
-
-MODEL_1_NAME = "GRU_Bidirectional"
-MODEL_1_PATH = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Bidirectional/cv_1_GRU_Bidirectional_all_folds.parquet"
-
-# MODEL_2_NAME = "GRU_BL"
-# MODEL_2_PATH = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Baseline_Denseweight_alpha10/cv_1_GRU_Baseline_Denseweight_alpha10_all_folds.parquet"
-
-MODEL_2_NAME = "RF"
-MODEL_2_PATH = "/scratch/mch/wolfensb/rainforest_semester_project/saved_models/cv_predictions/cv_pred_RF_all_folds.parquet"
-
-OUT_DIR = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Bidirectional/comparison_RF"
+OUT_DIR = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/RF_spline/comparison_GRU_optimized3"
 # OUT_DIR = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Baseline_optimized_logBias_scatter/comparison_GRU_Baseline_Denseweight_alpha10"
 os.makedirs(OUT_DIR, exist_ok=True)
 
@@ -51,9 +31,6 @@ ALLFOLD_FILES = { # only comparision between TWO models supported
     MODEL_2_NAME: MODEL_2_PATH,
 }
 
-# -----------------------------
-# Helpers
-# -----------------------------
 def load_allfold(method: str) -> pd.DataFrame:
     path = ALLFOLD_FILES[method]
     if not os.path.exists(path):
@@ -61,7 +38,6 @@ def load_allfold(method: str) -> pd.DataFrame:
 
     df = pd.read_parquet(path)
 
-    # --- split detection ---
     if "split" in df.columns:
         split_col = "split"
         df["__split__"] = df[split_col].astype(str).str.lower()
@@ -76,20 +52,16 @@ def load_allfold(method: str) -> pd.DataFrame:
             f"Columns are: {list(df.columns)}"
         )
 
-    # enforce train/test presence (at least one)
     allowed = {"train", "test"}
     present = set(df["__split__"].dropna().unique())
     if not (present & allowed):
         raise ValueError(f"{path}: detected split values={present}, but no train/test found.")
 
-    # --- fold column ---
     if "fold" not in df.columns:
         raise KeyError(f"{path}: missing required column 'fold'. Columns are: {list(df.columns)}")
 
-    # normalize fold to string labels (keeps original values but consistent)
     df["__fold__"] = df["fold"].astype(str)
 
-    # --- required columns ---
     for c in [EST_COL, REF_COL]:
         if c not in df.columns:
             raise KeyError(f"{path}: missing required column '{c}'. Columns are: {list(df.columns)}")
@@ -97,9 +69,7 @@ def load_allfold(method: str) -> pd.DataFrame:
     return df
 
 
-# -----------------------------
-# Compute metrics across folds (but from the pooled files)
-# -----------------------------
+
 def compute_metrics_table_allfolds(bounds):
     """
     Returns a tidy DataFrame with columns:
@@ -114,7 +84,6 @@ def compute_metrics_table_allfolds(bounds):
             if dsplit.empty:
                 continue
 
-            # group by fold -> compute per-fold metrics (spread!)
             for fold, d in dsplit.groupby("__fold__", sort=True):
                 metrics_by_bound = perfscores(
                     d[EST_COL].to_numpy(),
@@ -137,9 +106,7 @@ def compute_metrics_table_allfolds(bounds):
     return pd.DataFrame(rows)
 
 
-# -----------------------------
-# Plotting
-# -----------------------------
+
 def save_boxplot_compare(df, outdir, split, metric, bounds_order):
     """
     Boxplot of per-fold metric distribution, GRU vs RF, for each bound.
@@ -269,10 +236,7 @@ def save_method_scatter_allfolds(outdir, split, bound_key):
     fig.savefig(fpath, dpi=200)
     plt.close(fig)
 
-#%%
-# -----------------------------
-# Run
-# -----------------------------
+
 bounds = [0, 1, 10, np.inf]
 bounds_order = ["all", "0.0-1.0", "1.0-10.0", "10.0-inf"]
 
@@ -293,9 +257,7 @@ for split in ["train", "test"]:
         save_summary_bar(dfm, OUT_DIR, split=split, metric=metric, bounds_order=bounds_order)
 
 #%%
-# Optional: pooled scatter per split/bound (aggregated across folds)
 for split in ["train", "test"]:
-    # We only do scatter for all values (no bounds)
     save_method_scatter_allfolds(OUT_DIR, split=split, bound_key="all")
 
 print(f"Saved figures + metrics table to: {OUT_DIR}")

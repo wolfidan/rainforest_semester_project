@@ -21,10 +21,10 @@ for i, trial in enumerate(best_trials):
     print(f"  Values: {trial.values}")
     print(f"  Params: {trial.params}")
 
-fig = optuna.visualization.plot_pareto_front(
-    study,
-    targets=lambda t: (t.values[0], t.values[1], t.values[2]),
-    target_names=["Objective 0", "Objective 1", "Objective 2"],
-)
+# fig = optuna.visualization.plot_pareto_front(
+#     study,
+#     targets=lambda t: (t.values[0], t.values[1], t.values[2]),
+#     target_names=["Objective 0", "Objective 1", "Objective 2"],
+# )
 
-fig.write_image("paretoStudy3.html")
+# fig.write_image("paretoStudy3.html")

@@ -5,28 +5,17 @@ from utils import load_allfold
 import numpy as np
 
 
+# script that compares the predictions of two models in a hexbin plot
 
-# MODEL_1_NAME = "GRU_BL_optim"
-# MODEL_1_PATH = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Baseline_optimized_logBias_scatter/cv_1_GRU_Baseline_optimized_logBias_scatter_all_folds.parquet"
 
-# MODEL_1_NAME = "GRU_BL_alpha10"
-# MODEL_1_PATH = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Baseline_Denseweight_alpha10/cv_1_GRU_Baseline_Denseweight_alpha10_all_folds.parquet"
+MODEL_1_NAME = "GRU_Bidirectional"
+MODEL_1_PATH = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Bidirectional/cv_1_GRU_Bidirectional_all_folds.parquet"
 
-# MODEL_1_NAME = "GRU_layernorm"
-# MODEL_1_PATH = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Baseline_denseweight_layernorm/cv_1_GRU_Baseline_denseweight_layernorm_all_folds.parquet"
+MODEL_2_NAME = "RF_noPostProcess"
+MODEL_2_PATH = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/cv_predictions/cv_pred_RF_noPostProcess_all_folds.parquet"
 
-MODEL_1_NAME = "GRU_diverseOptim2"
-MODEL_1_PATH = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Baseline_diverseOptim2/cv_1_GRU_Baseline_diverseOptim2_all_folds.parquet"
-
-MODEL_2_NAME = "GRU_BL"
-MODEL_2_PATH = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Baseline_Denseweight_alpha10/cv_1_GRU_Baseline_Denseweight_alpha10_all_folds.parquet"
-
-# MODEL_2_NAME = "RF"
-# MODEL_2_PATH = "/scratch/mch/wolfensb/rainforest_semester_project/saved_models/cv_predictions/cv_pred_RF_all_folds.parquet"
-
-# OUT_DIR = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Baseline_diverseOptim2/comparison_GRUOptim_RF"
 OUT_DIR = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Baseline_diverseOptim2/comparison_GRUOptim_BL"
-# OUT_DIR = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Baseline_optimized_logBias_scatter/comparison_GRU_Baseline_Denseweight_alpha10"
+OUT_DIR = "/scratch/mch/tkluser/rainforest_semester_project/saved_models/GRU_Bidirectional"
 os.makedirs(OUT_DIR, exist_ok=True)
 
 def split_and_group(df: pd.DataFrame, split="test"):
@@ -49,11 +38,7 @@ def save_method_scatter_allfolds(outdir, split):
 
     
     df_res = pd.merge(df_res1, df_res2, how="inner", on="vertgroup")
-    # colums pred_mean_y, pred_mean_x
-    # print(df_res.head())
-    # print(df_res.columns)
 
-#     
     pred_model1 = df_res["pred_mean_x"].to_numpy()
     pred_model2 = df_res["pred_mean_y"].to_numpy()
 
@@ -75,6 +60,8 @@ def save_method_scatter_allfolds(outdir, split):
     ax.set_title(f"Predicted precip., {MODEL_1_NAME} vs. {MODEL_2_NAME}, {split.upper()} split")
     ax.grid(True, which="both", alpha=0.2)
     fig.colorbar(hb, ax=ax, label='counts')
+    # ax.set_xscale('log')
+    # ax.set_yscale('log')
     # ax.legend()
 
     fig.tight_layout()
