@@ -120,8 +120,18 @@ class GRURainSeqDataset(Dataset):
         if shuffle:
             rng.shuffle(unique_groups)
 
-        n_subset = int(len(unique_groups) * subset_percent)
-        selected_groups = rng.choice(unique_groups, size=n_subset, replace=False)
+        if subset_percent >= 1:
+            n_subset = len(unique_groups)
+        else:
+            n_subset = int(len(unique_groups) * subset_percent)
+            # ensure at least one group is selected for non-zero subset
+            if n_subset < 1:
+                n_subset = 1
+
+        if n_subset >= len(unique_groups):
+            selected_groups = unique_groups
+        else:
+            selected_groups = rng.choice(unique_groups, size=n_subset, replace=False)
 
         subset_mask = np.isin(groups, selected_groups)
         # In subset_mask we lose the original ordering of the selected groups
