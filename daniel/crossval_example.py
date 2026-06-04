@@ -321,7 +321,7 @@ for fold, (vertgroups_train, vertgroups_test) in enumerate(kf, start=1):
             model_name="RF",
             fold=fold,
             split="train",
-            vertgroup_ids=np.asarray(vertgroups_train),
+            vertgroup_ids=np.asarray(sorted(vertgroups_train)),
             y_true=targets,
             y_pred=np.asarray(y_pred_train),
         )
@@ -334,7 +334,7 @@ for fold, (vertgroups_train, vertgroups_test) in enumerate(kf, start=1):
             model_name="RF",
             fold=fold,
             split="test",
-            vertgroup_ids=np.asarray(vertgroups_test),
+            vertgroup_ids=np.asarray(sorted(vertgroups_test)),
             y_true=targets,
             y_pred=np.asarray(y_pred_test),
         )
